@@ -47,7 +47,8 @@ node {
             stage('SonarQube Analysis') {
                 withSonarQubeEnv('SonarQube') {
                     sh '''
-                        ./mvnw -B sonar:sonar \
+                        ./mvnw -B \
+                          org.sonarsource.scanner.maven:sonar-maven-plugin:5.3.0.6276:sonar \
                           -Dsonar.projectKey=salary-api \
                           -Dsonar.host.url=http://10.0.18.41:9000
                     '''
