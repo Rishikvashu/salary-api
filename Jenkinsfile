@@ -1,54 +1,50 @@
 node {
     def buildStatus = 'SUCCESS'
 
-    try {
-        stage('Checkout') {
-            checkout scm
-        }
+    // Java 17 configuration for the entire pipeline
+    withEnv([
+        'JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64',
+        'PATH+JAVA=/usr/lib/jvm/java-17-openjdk-amd64/bin'
+    ]) {
 
-        stage('Environment Check') {
-            sh '''
-                echo "Checking Java 17..."
-                /usr/lib/jvm/java-17-openjdk-amd64/bin/java -version
-                /usr/lib/jvm/java-17-openjdk-amd64/bin/javac -version
+        try {
+            stage('Checkout') {
+                checkout scm
+            }
 
-                echo "Checking Maven Wrapper..."
-                test -f mvnw
-                chmod +x mvnw
+            stage('Environment Check') {
+                sh '''
+                    echo "Checking Java 17..."
+                    java -version
+                    javac -version
 
-                echo "Checking Gitleaks..."
-                gitleaks version
-            '''
-        }
+                    echo "Checking Maven Wrapper..."
+                    test -f mvnw
+                    chmod +x mvnw
 
-        stage('Gitleaks Secret Scan') {
-            sh '''
-                gitleaks git . \
-                  --redact \
-                  --exit-code 1
-            '''
-        }
+                    echo "Checking Gitleaks..."
+                    gitleaks version
+                '''
+            }
 
-        stage('Maven Build') {
-            withEnv([
-                'JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64',
-                'PATH+JAVA=/usr/lib/jvm/java-17-openjdk-amd64/bin'
-            ]) {
+            stage('Gitleaks Secret Scan') {
+                sh '''
+                    gitleaks git . \
+                      --redact \
+                      --exit-code 1
+                '''
+            }
+
+            stage('Maven Build') {
                 sh '''
                     echo "Java used for Maven:"
                     java -version
                     javac -version
-
                     ./mvnw -B clean package
                 '''
             }
-        }
 
-        stage('SonarQube Analysis') {
-            withEnv([
-                'JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64',
-                'PATH+JAVA=/usr/lib/jvm/java-17-openjdk-amd64/bin'
-            ]) {
+            stage('SonarQube Analysis') {
                 withSonarQubeEnv('SonarQube') {
                     sh '''
                         ./mvnw -B sonar:sonar \
@@ -57,21 +53,22 @@ node {
                     '''
                 }
             }
-        }
 
-        stage('Quality Gate') {
-            timeout(time: 5, unit: 'MINUTES') {
-                def qualityGate = waitForQualityGate()
-                if (qualityGate.status != 'OK') {
-                    error "SonarQube Quality Gate failed: ${qualityGate.status}"
+            stage('Quality Gate') {
+                timeout(time: 5, unit: 'MINUTES') {
+                    def qualityGate = waitForQualityGate()
+
+                    if (qualityGate.status != 'OK') {
+                        error "SonarQube Quality Gate failed: ${qualityGate.status}"
+                    }
                 }
             }
-        }
 
-    } catch (err) {
-        buildStatus = 'FAILURE'
-        throw err
-    } finally {
-        echo "Pipeline finished with status: ${buildStatus}"
+        } catch (err) {
+            buildStatus = 'FAILURE'
+            throw err
+        } finally {
+            echo "Pipeline finished with status: ${buildStatus}"
+        }
     }
 }
